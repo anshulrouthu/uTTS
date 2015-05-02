@@ -1,3 +1,3 @@
 # utts
-A small time triggered tack scheduler
+A small time triggered task scheduler
 
