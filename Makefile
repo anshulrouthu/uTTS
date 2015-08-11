@@ -5,7 +5,7 @@
 
 OBJS:=$(patsubst %.cpp, %.o, $(wildcard *.cpp))
 OBJS+=$(patsubst %.c, %.o, $(wildcard *.c))
-CFLAGS:=-g -DTASK_DEBUG -Werror -Wall
+CFLAGS:=-g -Werror -Wall
 
 .PHONY: all
 all: main

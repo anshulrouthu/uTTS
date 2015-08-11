@@ -3,61 +3,59 @@
  * All rights reserved.
  */
 
-#include "utts.h"
+#include "task_scheduler.h"
 #include <stdio.h>
 #include <unistd.h>
+#include <assert.h>
 
 void task1(void* ptr)
 {
     printf("Task 1\n");
-    usleep(100000);
+    uTsk::TaskDelayMicro(100000);
 }
 
 void task2(void* ptr)
 {
     printf("Task 2\n");
-    usleep(100000);
+    uTsk::TaskDelayMicro(100000);
 }
 
 void task3(void* ptr)
 {
     printf("Task 3\n");
-    usleep(100000);
+    uTsk::TaskDelayMicro(100000);
 }
 
 int main(int argc, char* argv[])
 {
-    uTTS tts;
+
+    assert(uTsk::TaskInitialize() == 0);
+    uTsk::TaskHandle_t handle[2];
+
+    handle[0] = uTsk::TaskCreate(&task1, 500, 0, NULL, "");
+    handle[1] = uTsk::TaskCreate(&task2, 250, 0, NULL, "");
+
+    assert(handle[0]);
+    assert(handle[1]);
+
+    assert(uTsk::TaskInit(handle[0]) == 0);
+    assert(uTsk::TaskInit(handle[1]) == 0);
+
     int i = 0;
-    TaskHandle_t handle[3];
-
-    handle[0] = tts.TaskCreate(&task1, 500, 0, NULL);
-    handle[1] = tts.TaskCreate(&task2, 250, 0, NULL);
-    //tts.CreateTask(&task3, 200, 0, NULL);
-
-    while(1)
+    while(++i < 20)
     {
-        utime_t delay = tts.TaskDispatch();
+        uTsk::utime_t delay = uTsk::TaskDispatch();
         if (delay)
         {
-            printf("idle time %ld\n", delay);
-            usleep(delay * 1000);
+            printf("idle time %lu\n", delay);
+            uTsk::TaskDelayMicro(delay * 1000);
         }
-
-        i++;
-
-        if (i % 8 == 0)
-        {
-            tts.TaskSuspend(handle[0], 1000);
-        }
-
-        if (i > 100)
-        {
-            i = 0;
-        }
-
     }
 
-    return 0;
+    assert(uTsk::TaskDelete(handle[0]) == 0);
+    assert(uTsk::TaskDelete(handle[1]) == 0);
+    assert(uTsk::TaskUninitialize() == 0);
+
+    return (0);
 }
 
