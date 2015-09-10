@@ -8,10 +8,12 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <sys/time.h>
+#include <stdint.h>
 
 namespace uTsk
 {
 
+#define MAX_TASKS 20
 #define MIN(a,b) a > b ? b : a
 static int MaxTaskID = 0;
 static TaskHandle_t currTask = NULL;
@@ -25,10 +27,8 @@ typedef struct TaskData
     utime_t t_completion;
     utime_t suspend;
     const char* name;
-    int id;
+    uint8_t id;
 }TaskData;
-
-typedef std::deque<TaskData*> uTaskList;
 
 /* TODO: The scope of the tasklist variable should be valid only within
  * TaskInitialize() and TaskUninitializ() methods
@@ -36,7 +36,7 @@ typedef std::deque<TaskData*> uTaskList;
  */
 struct SchedulerData
 {
-    uTaskList tasklist;
+    TaskData* tasklist[MAX_TASKS];
     utime_t lastrun;
 };
 
@@ -62,12 +62,13 @@ int TaskInitialize()
 
 int TaskUninitialize()
 {
-    for (uTaskList::iterator it = helper->tasklist.begin(); it != helper->tasklist.end(); ++it)
+    for (uint8_t i = 0; i < MAX_TASKS; ++i)
     {
-        delete (*it);
-        (*it) = NULL;
+        if (helper->tasklist[i])
+        {
+            TaskDeInit(helper->tasklist[i]);
+        }
     }
-    helper->tasklist.clear();
 
     delete helper;
 
@@ -87,9 +88,25 @@ TaskHandle_t TaskCreate(taskfunction* ptr, utime_t period, utime_t remaining_tim
     /* TODO: Not sure if task id is really required
      * implement decrement of MaxTaskID value on task deletion
      */
-    task->id = ++MaxTaskID;
 
-    helper->tasklist.push_back(task);
+    if (MaxTaskID == MAX_TASKS)
+    {
+        for (uint8_t i = 0; i < MAX_TASKS; ++i)
+        {
+            if (!helper->tasklist[i])
+            {
+                task->id = i;
+                helper->tasklist[task->id] = task;
+                return (task);
+            }
+        }
+
+        delete task;
+        return (NULL);
+    }
+
+    task->id = MaxTaskID++;
+    helper->tasklist[task->id] = task;
 
 #ifdef TASK_DEBUG
     printf("Task Created %p %ld %s\n", task, task->suspend, task->name);
@@ -99,18 +116,18 @@ TaskHandle_t TaskCreate(taskfunction* ptr, utime_t period, utime_t remaining_tim
 
 int TaskDelete(TaskHandle_t handle)
 {
-    uTaskList::iterator it = std::find(helper->tasklist.begin(), helper->tasklist.end(), handle);
+    uint8_t id = TaskGetID(handle);
 
-    if (it != helper->tasklist.end())
+    if (helper->tasklist)
     {
-        delete (*it);
-        (*it) = NULL;
-        helper->tasklist.erase(it);
+        delete helper->tasklist[id];
+        helper->tasklist[id] = NULL;
         return (0);
     }
 
     return (1);
 }
+
 
 utime_t TaskDispatch()
 {
@@ -123,33 +140,40 @@ utime_t TaskDispatch()
     utime_t tremaining = MAX_TIME_VALUE;
 
     // disable interrupts at this point
-    for (uTaskList::iterator it = helper->tasklist.begin(); it != helper->tasklist.end(); ++it)
+    for (uint8_t i = 0; i < MAX_TASKS; ++i)
     {
-        if ((*it)->suspend && now >= (*it)->suspend)
+        TaskData* t = helper->tasklist[i];
+
+        if (!t)
         {
-            uTsk::TaskResume((*it));
+            continue;
         }
 
-        (*it)->t_remaining -= elapsed; // this calculation is being screwed up with unsigned long as utime_t
-
-        if ((*it)->t_remaining <= 0)
+        if (t->suspend && now >= t->suspend)
         {
-            (*it)->t_remaining += (*it)->t_period;
+            uTsk::TaskResume(t);
+        }
+
+        t->t_remaining -= elapsed; // this calculation is being screwed up with unsigned long as utime_t
+
+        if (t->t_remaining <= 0)
+        {
+            t->t_remaining += t->t_period;
             utime_t start = uGetTimeMilli();
 
             // enable interrupts at this point
             // execute the task
-            if (!(*it)->suspend)
+            if (!t->suspend)
             {
-                currTask = (*it);
-                (*it)->task((*it)->appdata);
+                currTask = t;
+                t->task(t->appdata);
                 currTask = NULL;
             }
 
             // disable interrupts at this point
             tend = uGetTimeMilli();
-            tremaining = start + (*it)->t_period;
-            (*it)->t_completion = tremaining;
+            tremaining = start + t->t_period;
+            t->t_completion = tremaining;
 #ifdef TASK_DEBUG
             printf("Task %p Next execution now + %ld\n", (*it), (*it)->t_period);
 #endif
@@ -160,13 +184,19 @@ utime_t TaskDispatch()
     /*
      * find if any other tasks are completing soon and ready to be executed
      * calculate the idle_time based on next ready task
-     * TODO: Find a better solution rather iterating through entire list again
      */
-    for (uTaskList::iterator iter = helper->tasklist.begin(); iter != helper->tasklist.end(); ++iter)
+    for (uint8_t i = 0; i < MAX_TASKS; ++i)
     {
-        if ((*iter)->t_completion >= tend)
+        TaskData* t1 = helper->tasklist[i];
+
+        if (!t1)
         {
-            tremaining = MIN(tremaining,(*iter)->t_completion);
+            continue;
+        }
+
+        if (t1->t_completion >= tend)
+        {
+            tremaining = MIN(tremaining, t1->t_completion);
         }
     }
 
