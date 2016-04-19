@@ -6,17 +6,15 @@
 #ifndef UTSK_SCHEDULER_H_
 #define UTSK_SCHEDULER_H_
 
-#include <deque>
 #include <limits.h>
 
-namespace uTsk
-{
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-typedef enum TaskEvent
-{
-    TASK_INIT = 0,
-    TASK_DEINIT
-}TaskEvent;
+#ifndef UTSK_ENABLE
+#define UTSK_ENABLE
+#endif
 
 typedef long utime_t;
 typedef void* TaskHandle_t;
@@ -29,7 +27,7 @@ int TaskUninitialize();
 TaskHandle_t TaskCreate(taskfunction* ptr, utime_t period, utime_t remaining_time, void* appdata, const char* name);
 int TaskDelete(TaskHandle_t handle);
 utime_t TaskDispatch();
-int TaskSuspend(TaskHandle_t handle, utime_t delay = MAX_TIME_VALUE);
+int TaskSuspend(TaskHandle_t handle, utime_t delay);
 int TaskResume(TaskHandle_t handle);
 void TaskDelayMilli(utime_t time);
 void TaskDelayMicro(utime_t time);
@@ -39,6 +37,8 @@ const char* TaskGetName(TaskHandle_t handle);
 int TaskGetID(TaskHandle_t handle);
 int TaskJoin(TaskHandle_t handle);
 
+#ifdef __cplusplus
 }
+#endif
 
 #endif /* UTSK_SCHEDULER_H_ */

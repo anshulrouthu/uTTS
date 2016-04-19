@@ -4,14 +4,11 @@
  */
 
 #include "task_scheduler.h"
-#include <algorithm>
 #include <unistd.h>
 #include <stdio.h>
 #include <sys/time.h>
 #include <stdint.h>
-
-namespace uTsk
-{
+#include <stdlib.h>
 
 #define MAX_TASKS 20
 #define MIN(a,b) a > b ? b : a
@@ -34,18 +31,18 @@ typedef struct TaskData
  * TaskInitialize() and TaskUninitializ() methods
  * Implement the creation and deletion of tasklist in a better way
  */
-struct SchedulerData
+typedef struct SchedulerData
 {
     TaskData* tasklist[MAX_TASKS];
     utime_t lastrun;
-};
+} SchedulerData;
 
 SchedulerData* helper = NULL;
 
 utime_t uGetTimeMilli()
 {
     long mtime;
-    timeval time;
+    struct timeval time;
 
     gettimeofday(&time, NULL);
 
@@ -55,14 +52,16 @@ utime_t uGetTimeMilli()
 
 int TaskInitialize()
 {
-    helper = new SchedulerData();
+    helper = (SchedulerData*)malloc(sizeof(SchedulerData));
     helper->lastrun = uGetTimeMilli();
     return (0);
 }
 
 int TaskUninitialize()
 {
-    for (uint8_t i = 0; i < MAX_TASKS; ++i)
+    uint8_t i;
+
+    for (i = 0; i < MAX_TASKS; ++i)
     {
         if (helper->tasklist[i])
         {
@@ -70,14 +69,14 @@ int TaskUninitialize()
         }
     }
 
-    delete helper;
+    free(helper);
 
     return (0);
 }
 
 TaskHandle_t TaskCreate(taskfunction* ptr, utime_t period, utime_t remaining_time, void* appdata, const char* name)
 {
-    TaskData* task = new TaskData();
+    TaskData* task = (TaskData*)malloc(sizeof(TaskData));
     task->task = ptr;
     task->t_period = period;
     task->t_remaining = remaining_time;
@@ -85,13 +84,14 @@ TaskHandle_t TaskCreate(taskfunction* ptr, utime_t period, utime_t remaining_tim
     task->t_completion = remaining_time;
     task->suspend = MAX_TIME_VALUE;
     task->name = name;
+    uint8_t i;
+
     /* TODO: Not sure if task id is really required
      * implement decrement of MaxTaskID value on task deletion
      */
-
     if (MaxTaskID == MAX_TASKS)
     {
-        for (uint8_t i = 0; i < MAX_TASKS; ++i)
+        for (i = 0; i < MAX_TASKS; ++i)
         {
             if (!helper->tasklist[i])
             {
@@ -101,7 +101,7 @@ TaskHandle_t TaskCreate(taskfunction* ptr, utime_t period, utime_t remaining_tim
             }
         }
 
-        delete task;
+        free(task);
         return (NULL);
     }
 
@@ -120,7 +120,7 @@ int TaskDelete(TaskHandle_t handle)
 
     if (helper->tasklist)
     {
-        delete helper->tasklist[id];
+        free(helper->tasklist[id]);
         helper->tasklist[id] = NULL;
         return (0);
     }
@@ -138,9 +138,11 @@ utime_t TaskDispatch()
     helper->lastrun = now;
     utime_t tend = 0;
     utime_t tremaining = MAX_TIME_VALUE;
+    uint8_t i;
+    utime_t start;
 
     // disable interrupts at this point
-    for (uint8_t i = 0; i < MAX_TASKS; ++i)
+    for (i = 0; i < MAX_TASKS; ++i)
     {
         TaskData* t = helper->tasklist[i];
 
@@ -151,7 +153,7 @@ utime_t TaskDispatch()
 
         if (t->suspend && now >= t->suspend)
         {
-            uTsk::TaskResume(t);
+            TaskResume(t);
         }
 
         t->t_remaining -= elapsed; // this calculation is being screwed up with unsigned long as utime_t
@@ -159,7 +161,7 @@ utime_t TaskDispatch()
         if (t->t_remaining <= 0)
         {
             t->t_remaining += t->t_period;
-            utime_t start = uGetTimeMilli();
+            start = uGetTimeMilli();
 
             // enable interrupts at this point
             // execute the task
@@ -185,7 +187,7 @@ utime_t TaskDispatch()
      * find if any other tasks are completing soon and ready to be executed
      * calculate the idle_time based on next ready task
      */
-    for (uint8_t i = 0; i < MAX_TASKS; ++i)
+    for (i = 0; i < MAX_TASKS; ++i)
     {
         TaskData* t1 = helper->tasklist[i];
 
@@ -210,7 +212,7 @@ utime_t TaskDispatch()
 
 int TaskSuspend(TaskHandle_t handle, utime_t delay)
 {
-    TaskData* taskdata = static_cast<TaskData*>(handle);
+    TaskData* taskdata = (TaskData*)(handle);
     taskdata->suspend = delay == MAX_TIME_VALUE ? MAX_TIME_VALUE : delay + uGetTimeMilli();
 
 #ifdef TASK_DEBUG
@@ -222,7 +224,7 @@ int TaskSuspend(TaskHandle_t handle, utime_t delay)
 
 int TaskResume(TaskHandle_t handle)
 {
-    TaskData* taskdata = static_cast<TaskData*>(handle);
+    TaskData* taskdata =(TaskData*)(handle);
     taskdata->suspend = 0;
 
 #ifdef TASK_DEBUG
@@ -244,32 +246,31 @@ void TaskDelayMicro(utime_t time)
 
 int TaskInit(TaskHandle_t handle)
 {
-    static_cast<TaskData*>(handle)->suspend = 0;
+    ((TaskData*)(handle))->suspend = 0;
     return (0);
 }
 
 int TaskDeInit(TaskHandle_t handle)
 {
-    static_cast<TaskData*>(handle)->suspend = MAX_TIME_VALUE;
+    ((TaskData*)(handle))->suspend = MAX_TIME_VALUE;
     return (0);
 }
 
 const char* TaskGetName(TaskHandle_t handle)
 {
-    return (static_cast<TaskData*>(handle)->name);
+    return (((TaskData*)(handle))->name);
 }
 
 int TaskGetID(TaskHandle_t handle)
 {
-    return (static_cast<TaskData*>(handle)->id);
+    return (((TaskData*)(handle))->id);
 }
 
 int TaskJoin(TaskHandle_t handle)
 {
-    TaskData* taskdata = static_cast<TaskData*>(handle);
+    TaskData* taskdata = (TaskData*)(handle);
     while(currTask == taskdata);
 
     return (0);
 }
 
-}
